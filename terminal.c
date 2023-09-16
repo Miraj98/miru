@@ -4,8 +4,13 @@
 #include <errno.h>
 #include <stdio.h>
 
-void raw_mode(void);
-void disable_raw_mode(void);
+#include "editor.h"
+
+void rawMode(void);
+void disableRawMode(void);
+void mainLoop(void);
+void handleNormalMode(char *c);
+void handleInsertMode(char *c);
 
 typedef struct Terminal {
     struct termios _orig;
@@ -13,13 +18,29 @@ typedef struct Terminal {
 
 Terminal term;
 
+void mainLoop(void) {
+    rawMode();
+    while (1) {
+        char c = '\0';
+        read(STDIN_FILENO, &c, 1);
+        switch (getEditorMode(&editor)) {
+        case E_NORMAL_MODE:
+            if (c == 'q') return;
+            handleNormalMode(&c);
+            break;
+        case E_INSERT_MODE:
+            handleInsertMode(&c);
+            break;
+        }
+    }
+}
 
-void raw_mode(void) {
+void rawMode(void) {
     if (tcgetattr(STDIN_FILENO, &term._orig) == -1) {
         perror("[tcgetattr]");
         exit(1);
     }
-    atexit(disable_raw_mode);
+    atexit(disableRawMode);
 
     struct termios raw = term._orig;
     raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
@@ -35,9 +56,29 @@ void raw_mode(void) {
     }
 }
 
-void disable_raw_mode(void) {
+void disableRawMode(void) {
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &term._orig) == -1) {
         perror("[tcsetattr]");
         exit(1);
+    }
+}
+
+void handleNormalMode(char *c) {
+    switch (*c) {
+    case 'i':
+        updateEditorMode(&editor, E_INSERT_MODE);
+        break;
+    }
+}
+
+void handleInsertMode(char *c) {
+    if (*c == 27) {
+        updateEditorMode(&editor, E_NORMAL_MODE);
+    } else {
+        if (*c == 0x7F) {
+            write(STDOUT_FILENO, "\b \b", 3);
+        } else {
+            write(STDOUT_FILENO, c, 1);
+        }
     }
 }
