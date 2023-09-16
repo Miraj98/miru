@@ -9,7 +9,10 @@ enum EditorMode {
 typedef struct Editor Editor;
 extern Editor editor;
 
-void updateEditorMode(Editor *e, enum EditorMode m);
 enum EditorMode getEditorMode(Editor *e);
+void updateEditorMode(Editor *e, enum EditorMode m);
+void setEditorSize(Editor *e, int rows, int cols);
+int getEditorRows(Editor *e);
+int getEditorCols(Editor *e);
 
 #endif // EDITOR_H
