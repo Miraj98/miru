@@ -12,6 +12,16 @@
 #define CURSOR_START "\x1b[H"
 // Escape sequences
 
+#define MAX_STDOUT_BUF 1024
+
+typedef struct Terminal {
+    struct termios _orig;
+    char stdout_buf[MAX_STDOUT_BUF];
+    int stdout_buf_len;
+} Terminal;
+
+Terminal term;
+
 void rawMode(void);
 void disableRawMode(void);
 void mainLoop(void);
@@ -20,18 +30,34 @@ void handleInsertMode(char *c);
 void clearScreen(void);
 void repositionCursor(int row, int col);
 void drawRows(void);
+void appendBuf(Terminal *t, char *c, int len);
+void flushBufToStdout(Terminal *t);
 
-typedef struct Terminal {
-    struct termios _orig;
-    char stdoutbuf[1024];
-} Terminal;
 
-Terminal term;
+void appendBuf(Terminal *t, char *c, int len) {
+    if (t->stdout_buf_len + len > MAX_STDOUT_BUF) {
+        fprintf(stderr, "Max buffer size reached for Terminal.stdout_buf\n");
+        exit(1);
+    }
+    int i;
+    for (i = 0; i < len; ++i) {
+        t->stdout_buf[t->stdout_buf_len + i] = c[i];
+    }
+    t->stdout_buf_len += len;
+}
+
+void flushBufToStdout(Terminal *t) {
+    if (t->stdout_buf_len > 0) {
+        write(STDOUT_FILENO, t->stdout_buf, t->stdout_buf_len);
+        t->stdout_buf_len = 0;
+    }
+}
 
 void mainLoop(void) {
     rawMode();
     clearScreen();
     drawRows();
+    flushBufToStdout(&term);
     while (1) {
         char c = '\0';
         read(STDIN_FILENO, &c, 1);
@@ -44,6 +70,7 @@ void mainLoop(void) {
             handleInsertMode(&c);
             break;
         }
+        flushBufToStdout(&term);
     }
 }
 
@@ -74,6 +101,7 @@ void disableRawMode(void) {
         exit(1);
     }
     clearScreen();
+    flushBufToStdout(&term);
 }
 
 void handleNormalMode(char *c) {
@@ -89,16 +117,16 @@ void handleInsertMode(char *c) {
         updateEditorMode(&editor, E_NORMAL_MODE);
     } else {
         if (*c == 0x7F) {
-            write(STDOUT_FILENO, "\b \b", 3);
+            appendBuf(&term, "\b \b", 3);
         } else {
-            write(STDOUT_FILENO, c, 1);
+            appendBuf(&term, c, 1);
         }
     }
 }
 
 void clearScreen(void) {
     // Clear screen and reposition cursor to start
-    write(STDOUT_FILENO, "\x1b[2J\x1b[H", 7);
+    appendBuf(&term, "\x1b[2J\x1b[H", 7);
 }
 
 void drawRows(void) {
@@ -111,11 +139,12 @@ void drawRows(void) {
     int r;
     for (r = 0; r < getEditorRows(&editor); r++) {
         if (r == getEditorRows(&editor) - 1) {
-            write(STDOUT_FILENO, "--- NORMAL ---", 14);
+            appendBuf(&term, "--- NORMAL ---", 14);
         } else {
-            write(STDOUT_FILENO, "~\r\n", 3);
+            appendBuf(&term, "~\r\n", 3);
         }
     }
 
-    write(STDOUT_FILENO, "\x1b[1;2H", 6);
+    appendBuf(&term, "\x1b[1;2H", 6);
 }
+
