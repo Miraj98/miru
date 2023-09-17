@@ -1,3 +1,4 @@
 miru
 *.o
 *.a
+*.log
